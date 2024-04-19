@@ -307,7 +307,7 @@ def launch_ui(launch_kwargs):
             inputs=[image_pil, src_image_pil, prompt, scale, control_scale],
             fn=run_for_examples,
             outputs=[generated_image],
-            cache_examples=True,
+            cache_examples=False
         )
 
         gr.Markdown(article)
