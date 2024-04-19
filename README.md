@@ -77,6 +77,13 @@ mv IP-Adapter/models models
 mv IP-Adapter/sdxl_models sdxl_models
 ```
 
+Or run the following command to download all models:
+
+```python
+pip install -r gradio_demo/requirements.txt
+python gradio_demo/download_models.py
+```
+
 ## Usage
 
 Our method is fully compatible with [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter). For feature subtraction, it only works for global feature instead of patch features. For SD1.5, you can find a demo at [infer_style_sd15.py](https://github.com/InstantStyle/InstantStyle/blob/main/infer_style_sd15.py), but we find that SD1.5 has weaker perception and understanding of style information, thus this demo is experimental only. All block names can be found in [attn_blocks.py](https://github.com/InstantStyle/InstantStyle/blob/main/attn_blocks.py) and [attn_blocks_sd15.py](https://github.com/InstantStyle/InstantStyle/blob/main/attn_blocks_sd15.py) for SDXL and SD1.5 respectively.

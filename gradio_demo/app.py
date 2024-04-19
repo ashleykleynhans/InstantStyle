@@ -1,11 +1,14 @@
 import sys
 sys.path.append('./')
 
-import os 
+import os
 import cv2
 import torch
 import random
 import numpy as np
+import argparse
+import logging
+
 from PIL import Image
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 
@@ -14,43 +17,18 @@ import gradio as gr
 
 from ip_adapter import IPAdapterXL
 
-import os
-os.system("git lfs install")
-os.system("git clone https://huggingface.co/h94/IP-Adapter")
-os.system("mv IP-Adapter/sdxl_models sdxl_models")
-
-# global variable
+# Global variables
 MAX_SEED = np.iinfo(np.int32).max
-device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = torch.float16 if str(device).__contains__("cuda") else torch.float32
+LOG_LEVEL = logging.INFO
+DEFAULT_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
+MODEL_DIRECTORY = "./models"
 
-# initialization
-base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
-image_encoder_path = "sdxl_models/image_encoder"
-ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
-
-controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
-controlnet = ControlNetModel.from_pretrained(controlnet_path, use_safetensors=False, torch_dtype=torch.float16).to(device)
-
-# load SDXL pipeline
-pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path,
-    controlnet=controlnet,
-    torch_dtype=torch.float16,
-    add_watermarker=False,
-)
-pipe.enable_vae_tiling()
-
-# load ip-adapter
-# target_blocks=["block"] for original IP-Adapter
-# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
-# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
-ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
 
 def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
     if randomize_seed:
         seed = random.randint(0, MAX_SEED)
     return seed
+
 
 def resize_img(
     input_image,
@@ -82,6 +60,7 @@ def resize_img(
         ] = np.array(input_image)
         input_image = Image.fromarray(res)
     return input_image
+
 
 def get_example():
     case = [
@@ -123,6 +102,7 @@ def get_example():
     ]
     return case
 
+
 def run_for_examples(style_image, source_image, prompt, scale, control_scale):
 
     return create_image(
@@ -140,6 +120,7 @@ def run_for_examples(style_image, source_image, prompt, scale, control_scale):
         neg_content_prompt="",
         neg_content_scale=0,
     )
+
 
 @spaces.GPU(enable_queue=True)
 def create_image(image_pil,
@@ -176,155 +157,224 @@ def create_image(image_pil,
         control_scale = 0
 
     if float(control_scale) == 0:
-        canny_map = canny_map.resize((1024,1024))
+        canny_map = canny_map.resize((1024, 1024))
     
     if len(neg_content_prompt) > 0 and neg_content_scale != 0:
-        images = ip_model.generate(pil_image=image_pil,
-                                prompt=prompt,
-                                negative_prompt=n_prompt,
-                                scale=scale,
-                                guidance_scale=guidance_scale,
-                                num_samples=num_samples,
-                                num_inference_steps=num_inference_steps, 
-                                seed=seed,
-                                image=canny_map,
-                                controlnet_conditioning_scale=float(control_scale),
-                                neg_content_prompt=neg_content_prompt,
-                                neg_content_scale=neg_content_scale
-                                )
+        images = ip_model.generate(
+            pil_image=image_pil,
+            prompt=prompt,
+            negative_prompt=n_prompt,
+            scale=scale,
+            guidance_scale=guidance_scale,
+            num_samples=num_samples,
+            num_inference_steps=num_inference_steps,
+            seed=seed,
+            image=canny_map,
+            controlnet_conditioning_scale=float(control_scale),
+            neg_content_prompt=neg_content_prompt,
+            neg_content_scale=neg_content_scale
+        )
     else:
-        images = ip_model.generate(pil_image=image_pil,
-                                prompt=prompt,
-                                negative_prompt=n_prompt,
-                                scale=scale,
-                                guidance_scale=guidance_scale,
-                                num_samples=num_samples,
-                                num_inference_steps=num_inference_steps, 
-                                seed=seed,
-                                image=canny_map,
-                                controlnet_conditioning_scale=float(control_scale),
-                                )
+        images = ip_model.generate(
+            pil_image=image_pil,
+            prompt=prompt,
+            negative_prompt=n_prompt,
+            scale=scale,
+            guidance_scale=guidance_scale,
+            num_samples=num_samples,
+            num_inference_steps=num_inference_steps,
+            seed=seed,
+            image=canny_map,
+            controlnet_conditioning_scale=float(control_scale),
+        )
     return images
+
 
 def pil_to_cv2(image_pil):
     image_np = np.array(image_pil)
     image_cv2 = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     return image_cv2
 
-# Description
-title = r"""
-<h1 align="center">InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</h1>
-"""
+def launch_ui(launch_kwargs):
+    # Description
+    title = r"""
+    <h1 align="center">InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</h1>
+    """
 
-description = r"""
-<b>Official 🤗 Gradio demo</b> for <a href='https://github.com/InstantStyle/InstantStyle' target='_blank'><b>InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</b></a>.<br>
-How to use:<br>
-1. Upload a style image.
-2. Set stylization mode, only use style block by default.
-2. Enter a text prompt, as done in normal text-to-image models.
-3. Click the <b>Submit</b> button to begin customization.
-4. Share your stylized photo with your friends and enjoy! 😊
-Advanced usage:<br>
-1. Click advanced options.
-2. Upload another source image for image-based stylization using ControlNet.
-3. Enter negative content prompt to avoid content leakage.
-"""
+    description = r"""
+    <b>Official 🤗 Gradio demo</b> for <a href='https://github.com/InstantStyle/InstantStyle' target='_blank'><b>InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</b></a>.<br>
+    How to use:<br>
+    1. Upload a style image.
+    2. Set stylization mode, only use style block by default.
+    2. Enter a text prompt, as done in normal text-to-image models.
+    3. Click the <b>Submit</b> button to begin customization.
+    4. Share your stylized photo with your friends and enjoy! 😊
+    Advanced usage:<br>
+    1. Click advanced options.
+    2. Upload another source image for image-based stylization using ControlNet.
+    3. Enter negative content prompt to avoid content leakage.
+    """
 
-article = r"""
----
-📝 **Citation**
-<br>
-If our work is helpful for your research or applications, please cite us via:
-```bibtex
-@article{wang2024instantstyle,
-  title={InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation},
-  author={Wang, Haofan and Wang, Qixun and Bai, Xu and Qin, Zekui and Chen, Anthony},
-  journal={arXiv preprint arXiv:2404.02733},
-  year={2024}
-}
-```
-📧 **Contact**
-<br>
-If you have any questions, please feel free to open an issue or directly reach us out at <b>haofanwang.ai@gmail.com</b>.
-"""
+    article = r"""
+    ---
+    📝 **Citation**
+    <br>
+    If our work is helpful for your research or applications, please cite us via:
+    ```bibtex
+    @article{wang2024instantstyle,
+      title={InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation},
+      author={Wang, Haofan and Wang, Qixun and Bai, Xu and Qin, Zekui and Chen, Anthony},
+      journal={arXiv preprint arXiv:2404.02733},
+      year={2024}
+    }
+    ```
+    📧 **Contact**
+    <br>
+    If you have any questions, please feel free to open an issue or directly reach us out at <b>haofanwang.ai@gmail.com</b>.
+    """
 
-block = gr.Blocks(css="footer {visibility: hidden}").queue(max_size=10, api_open=False)
-with block:
-    
-    # description
-    gr.Markdown(title)
-    gr.Markdown(description)
-    
-    with gr.Tabs():
-        with gr.Row():
-            with gr.Column():
-                
-                with gr.Row():
-                    with gr.Column():
-                        image_pil = gr.Image(label="Style Image", type='pil')
-                
-                target = gr.Radio(["Load only style blocks", "Load style+layout block", "Load original IP-Adapter"], 
-                                  value="Load only style blocks",
-                                  label="Style mode")
-                
-                prompt = gr.Textbox(label="Prompt",
-                                    value="a cat, masterpiece, best quality, high quality")
-                
-                scale = gr.Slider(minimum=0,maximum=2.0, step=0.01,value=1.0, label="Scale")
-                
-                with gr.Accordion(open=False, label="Advanced Options"):
-                    
-                    with gr.Column():
-                        src_image_pil = gr.Image(label="Source Image (optional)", type='pil')
-                    control_scale = gr.Slider(minimum=0,maximum=1.0, step=0.01,value=0.5, label="Controlnet conditioning scale")
-                    
-                    n_prompt = gr.Textbox(label="Neg Prompt", value="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry")
-                    
-                    neg_content_prompt = gr.Textbox(label="Neg Content Prompt", value="")
-                    neg_content_scale = gr.Slider(minimum=0, maximum=1.0, step=0.01,value=0.5, label="Neg Content Scale")
+    interface = gr.Blocks(css="footer {visibility: hidden}").queue(max_size=10, api_open=False)
+    with interface:
 
-                    guidance_scale = gr.Slider(minimum=1,maximum=15.0, step=0.01,value=5.0, label="guidance scale")
-                    num_samples= gr.Slider(minimum=1,maximum=4.0, step=1.0,value=1.0, label="num samples")
-                    num_inference_steps = gr.Slider(minimum=5,maximum=50.0, step=1.0,value=20, label="num inference steps")
-                    seed = gr.Slider(minimum=-1000000,maximum=1000000,value=1, step=1, label="Seed Value")
-                    randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
-                    
-                generate_button = gr.Button("Generate Image")
-                
-            with gr.Column():
-                generated_image = gr.Gallery(label="Generated Image")
+        # description
+        gr.Markdown(title)
+        gr.Markdown(description)
 
-        generate_button.click(
-            fn=randomize_seed_fn,
-            inputs=[seed, randomize_seed],
-            outputs=seed,
-            queue=False,
-            api_name=False,
-        ).then(
-            fn=create_image,
-            inputs=[image_pil,
-                    src_image_pil,
-                    prompt,
-                    n_prompt,
-                    scale, 
-                    control_scale, 
-                    guidance_scale,
-                    num_samples,
-                    num_inference_steps,
-                    seed,
-                    target,
-                    neg_content_prompt,
-                    neg_content_scale], 
-            outputs=[generated_image])
-    
-    gr.Examples(
-        examples=get_example(),
-        inputs=[image_pil, src_image_pil, prompt, scale, control_scale],
-        fn=run_for_examples,
-        outputs=[generated_image],
-        cache_examples=True,
+        with gr.Tabs():
+            with gr.Row():
+                with gr.Column():
+
+                    with gr.Row():
+                        with gr.Column():
+                            image_pil = gr.Image(label="Style Image", type='pil')
+
+                    target = gr.Radio(["Load only style blocks", "Load style+layout block", "Load original IP-Adapter"],
+                                      value="Load only style blocks",
+                                      label="Style mode")
+
+                    prompt = gr.Textbox(label="Prompt",
+                                        value="a cat, masterpiece, best quality, high quality")
+
+                    scale = gr.Slider(minimum=0,maximum=2.0, step=0.01,value=1.0, label="Scale")
+
+                    with gr.Accordion(open=False, label="Advanced Options"):
+
+                        with gr.Column():
+                            src_image_pil = gr.Image(label="Source Image (optional)", type='pil')
+                        control_scale = gr.Slider(minimum=0,maximum=1.0, step=0.01,value=0.5, label="Controlnet conditioning scale")
+
+                        n_prompt = gr.Textbox(label="Neg Prompt", value="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry")
+
+                        neg_content_prompt = gr.Textbox(label="Neg Content Prompt", value="")
+                        neg_content_scale = gr.Slider(minimum=0, maximum=1.0, step=0.01,value=0.5, label="Neg Content Scale")
+
+                        guidance_scale = gr.Slider(minimum=1,maximum=15.0, step=0.01,value=5.0, label="guidance scale")
+                        num_samples= gr.Slider(minimum=1,maximum=4.0, step=1.0,value=1.0, label="num samples")
+                        num_inference_steps = gr.Slider(minimum=5,maximum=50.0, step=1.0,value=20, label="num inference steps")
+                        seed = gr.Slider(minimum=-1000000,maximum=1000000,value=1, step=1, label="Seed Value")
+                        randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+
+                    generate_button = gr.Button("Generate Image")
+
+                with gr.Column():
+                    generated_image = gr.Gallery(label="Generated Image")
+
+            generate_button.click(
+                fn=randomize_seed_fn,
+                inputs=[seed, randomize_seed],
+                outputs=seed,
+                queue=False,
+                api_name=False,
+            ).then(
+                fn=create_image,
+                inputs=[image_pil,
+                        src_image_pil,
+                        prompt,
+                        n_prompt,
+                        scale,
+                        control_scale,
+                        guidance_scale,
+                        num_samples,
+                        num_inference_steps,
+                        seed,
+                        target,
+                        neg_content_prompt,
+                        neg_content_scale],
+                outputs=[generated_image])
+
+        gr.Examples(
+            examples=get_example(),
+            inputs=[image_pil, src_image_pil, prompt, scale, control_scale],
+            fn=run_for_examples,
+            outputs=[generated_image],
+            cache_examples=True,
+        )
+
+        gr.Markdown(article)
+
+    interface.launch(**launch_kwargs)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the InstantStyle Gradio Interface")
+    parser.add_argument("--inbrowser", action="store_true", help="Open in browser")
+    parser.add_argument("--listen", type=str, default="0.0.0.0" if "SPACE_ID" in os.environ else "127.0.0.1", help="IP to listen on for connections to Gradio")
+    parser.add_argument("--server_port", type=int, default=7860, help="Server port")
+    parser.add_argument("--share", action="store_true", help="Share the Gradio UI")
+    parser.add_argument("--model_path", type=str, default=DEFAULT_MODEL, help="Base model path")
+    args = parser.parse_args()
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    dtype = torch.float16 if str(device).__contains__("cuda") or str(device).__contains__("mps") else torch.float32
+
+    # Initialization
+    base_model_path = DEFAULT_MODEL
+    image_encoder_path = "sdxl_models/image_encoder"
+    ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
+
+    controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
+    controlnet = ControlNetModel.from_pretrained(controlnet_path, use_safetensors=False, torch_dtype=dtype).to(device)
+
+    # load SDXL pipeline
+    pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        base_model_path,
+        controlnet=controlnet,
+        torch_dtype=dtype,
+        add_watermarker=False,
     )
-    
-    gr.Markdown(article)
+    pipe.enable_vae_tiling()
 
-block.launch()
+    # load ip-adapter
+    # target_blocks=["block"] for original IP-Adapter
+    # target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+    # target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+    ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+
+    logging.basicConfig(
+        format="%(asctime)s : %(levelname)s : %(message)s",
+        level=LOG_LEVEL
+    )
+
+    launch_kwargs = {
+        "server_name": args.listen,
+        "server_port": args.server_port
+    }
+
+    if args.username and args.password:
+        launch_kwargs["auth"] = (args.username, args.password)
+
+    if args.inbrowser:
+        launch_kwargs["inbrowser"] = args.inbrowser
+
+    if args.share:
+        launch_kwargs["share"] = args.share
+
+    launch_ui(
+        launch_kwargs
+    )
