@@ -322,6 +322,8 @@ if __name__ == "__main__":
     parser.add_argument("--server_port", type=int, default=7860, help="Server port")
     parser.add_argument("--share", action="store_true", help="Share the Gradio UI")
     parser.add_argument("--model_path", type=str, default=DEFAULT_MODEL, help="Base model path")
+    parser.add_argument("--username", type=str, default="", help="Username for authentication")
+    parser.add_argument("--password", type=str, default="", help="Password for authentication")
     args = parser.parse_args()
 
     if torch.cuda.is_available():
