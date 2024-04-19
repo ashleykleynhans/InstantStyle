@@ -72,13 +72,6 @@ def get_example():
             0.0
         ],
         [
-            "./assets/1.jpg",
-            None,
-            "a cat, masterpiece, best quality, high quality",
-            1.0,
-            0.0
-        ],
-        [
             "./assets/2.jpg",
             None,
             "a cat, masterpiece, best quality, high quality",
@@ -87,6 +80,20 @@ def get_example():
         ],
         [
             "./assets/3.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/4.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/5.jpg",
             None,
             "a cat, masterpiece, best quality, high quality",
             1.0,
