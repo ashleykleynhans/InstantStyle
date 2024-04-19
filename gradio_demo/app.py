@@ -240,7 +240,12 @@ def launch_ui(launch_kwargs):
     If you have any questions, please feel free to open an issue or directly reach us out at <b>haofanwang.ai@gmail.com</b>.
     """
 
-    interface = gr.Blocks(css="footer {visibility: hidden}").queue(max_size=10, api_open=False)
+    interface = gr.Blocks(
+        css="footer {visibility: hidden}",
+        title="InstantStyle : Free Lunch towards Style-Preserving in Text-to-Image Generation",
+        theme=gr.themes.Default()
+    ).queue(max_size=10, api_open=False)
+
     with interface:
 
         # description
