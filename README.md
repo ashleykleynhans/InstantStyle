@@ -32,6 +32,8 @@ Injecting into Style Blocks Only. Empirically, each layer of a deep network capt
 </p>
 
 ## Release
+- [2024/04/24] 🔥 We support [HiDiffusion](https://github.com/megvii-research/HiDiffusion) for generating highres images, find more information [here](https://github.com/InstantStyle/InstantStyle/tree/main?tab=readme-ov-file#high-resolution-generation).
+- [2024/04/23] 🔥 InstantStyle has been natively supported in diffusers, more information can be found [here](https://github.com/huggingface/diffusers/pull/7668).
 - [2024/04/20] 🔥 InstantStyle is supported in [Mikubill/sd-webui-controlnet](https://github.com/Mikubill/sd-webui-controlnet/discussions/2770).
 - [2024/04/11] 🔥 We add the experimental distributed inference feature. Check it [here](https://github.com/InstantStyle/InstantStyle?tab=readme-ov-file#distributed-inference).
 - [2024/04/10] 🔥 We support an [online demo](https://modelscope.cn/studios/instantx/InstantStyle/summary) on ModelScope.
@@ -137,6 +139,34 @@ images = ip_model.generate(pil_image=image,
 images[0].save("result.png")
 ```
 
+## High Resolution Generation
+We employ [HiDiffusion](https://github.com/megvii-research/HiDiffusion) to seamlessly generate high-resolution images, you can install via `pip install hidiffusion`.
+
+```
+from hidiffusion import apply_hidiffusion, remove_hidiffusion
+
+# reduce memory consumption
+pipe.enable_vae_tiling()
+
+# apply hidiffusion with a single line of code.
+apply_hidiffusion(pipe)
+
+...
+
+# generate image at higher resolution
+images = ip_model.generate(pil_image=image,
+                           prompt="a cat, masterpiece, best quality, high quality",
+                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                           scale=1.0,
+                           guidance_scale=5,
+                           num_samples=1,
+                           num_inference_steps=30, 
+                           seed=42,
+                           height=2048,
+                           width=2048
+                          )
+```
+
 ## Distributed Inference
 On distributed setups, you can run inference across multiple GPUs with 🤗 Accelerate or PyTorch Distributed, which is useful for generating with multiple prompts in parallel, in case you have limited VRAM on each GPU. More information can be found [here](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#device-placement). Make sure you have installed diffusers from the source and the lastest accelerate.
 
@@ -164,12 +194,8 @@ python app.py
 - [InstantStyle for ComfyUI](https://github.com/cubiq/ComfyUI_IPAdapter_plus)
 - [InstantID](https://github.com/InstantID/InstantID)
 
-## TODO
-- Support in diffusers API, check our [PR](https://github.com/huggingface/diffusers/pull/7668).
-- Support InstantID for face stylization once stars reach 1K.
-
 ## Disclaimer
-Our released codes and checkpoints are for non-commercial research purposes only. Users are granted the freedom to create images using this tool, but they are obligated to comply with local laws and utilize it responsibly. The developers will not assume any responsibility for potential misuse by users.
+The pretrained checkpoints follow the license in [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models). Users are granted the freedom to create images using this tool, but they are obligated to comply with local laws and utilize it responsibly. The developers will not assume any responsibility for potential misuse by users.
 
 ## Acknowledgements
 InstantStyle is developed by the InstantX team and is highly built on [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter), which has been unfairly compared by many other works. We at InstantStyle make IP-Adapter great again. Additionally, we acknowledge [Hu Ye](https://github.com/xiaohu2015) for his valuable discussion.
